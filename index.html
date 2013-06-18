@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html>
+  <head>
+   <script type="text/javascript" src="../d3.v2.js"></script>
+   <script type="text/javascript" src="../d3.tip.min.js"></script>
+     <style type="text/css">
+body {
+margin: 0; padding: 0;
+}
+
+    #countries path {
+      fill: #eee;
+      stroke: #fff;
+    }
+
+    #arcs path {
+      fill: none;
+      stroke-opacity: .9;
+    }
+
+circle {
+  fill: steelblue;
+  fill-opacity: .8;
+  stroke: #000;
+      stroke-opacity: .2;
+}
+.dot {
+  pointer-events: none;
+  visibility: hidden;
+}
+.dot.active {
+  visibility: visible;
+}
+
+.labels {
+  pointer-events: none;
+  visibility: hidden;
+  font: 10px Arial, sans-serif;        
+}
+.labels.active {
+  visibility: visible;
+}
+
+.link {
+  stroke: #ddd;
+  stroke-opacity: .1;
+  pointer-events: none;
+}
+
+.link.active {
+  stroke-opacity: 1;
+}
+
+.d3-tip {
+    line-height: 1;
+    font-weight: bold;
+    padding: 2px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    border-radius: 1px;
+  border: 0px;      
+  pointer-events: none;
+  font: 12px Arial, sans-serif;        
+  }
+
+  .d3-tip text {
+    fill: #fff;
+    stroke: none;
+  }
+
+
+    </style>
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-40197040-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+  </head>
+
+  <body>
+    <div id="chart"></div>
+    <script type="text/javascript">
+  d3.geo.galbers = function() {
+
+	var d3_geo_radians = Math.PI / 180;
+	var origin = [ -98, 38 ], parallels = [ 29.5, 45.5 ]; //changing this does nothing
+
+    function galbers(coordinates) {
+      var lon = coordinates[0], lat = coordinates[1];
+
+		var thingy = {};
+		if ( lon <= 50 && lon >= -15 && lat <= 75 && lat >= 30 ) {
+			thingy = europe(coordinates);
+		} else if ( lon >= 150 && lat <= 0 ) {
+			thingy = newzealand(coordinates);
+		} else if ( lon > 80 && lat > -20 ) {
+			thingy = asia(coordinates);
+		} else {
+			thingy = lower48(coordinates);
+		}
+		return thingy;
+
+    }
+    var lower48 = d3.geo.albers().origin([ -94, 40 ]);
+    var europe = d3.geo.albers().origin([ 0,50 ]).parallels([ 46, 60 ]);
+    var newzealand = d3.geo.albers().origin([ 170,-40 ]).parallels([ -36, -46 ]);
+    var asia = d3.geo.albers().origin([ 130,35 ]).parallels([ 30, 50 ]);
+    galbers.scale = function(x) {
+      if (!arguments.length) return lower48.scale();
+      lower48.scale(x);
+      europe.scale(x * .7);
+      newzealand.scale(x * .5);
+      asia.scale(x * .3);
+      return galbers.translate(lower48.translate());
+    };
+    galbers.translate = function(x) {
+      if (!arguments.length) return lower48.translate();
+      var dz = lower48.scale() / 1e3, dx = x[0], dy = x[1];
+      lower48.translate(x);
+      europe.translate([ dx + 407 * dz, dy + 100 * dz ]);
+      newzealand.translate([ dx - 520 * dz, dy + 140 * dz ]);
+      asia.translate([ dx - 510 * dz, dy - 210 * dz ]);
+      return galbers;
+    };
+    galbers.origin = function(x) {
+      if (!arguments.length) return origin;
+      origin = [ +x[0], +x[1] ];
+      return reload();
+    };
+    galbers.parallels = function(x) {
+      if (!arguments.length) return parallels;
+      parallels = [ +x[0], +x[1] ];
+      return reload();
+    };
+
+	function reload() {
+      var phi1 = d3_geo_radians * parallels[0], phi2 = d3_geo_radians * parallels[1], lat0 = d3_geo_radians * origin[1], s = Math.sin(phi1), c = Math.cos(phi1);
+      lng0 = d3_geo_radians * origin[0];
+      n = .5 * (s + Math.sin(phi2));
+      C = c * c + 2 * n * s;
+      p0 = Math.sqrt(C - 2 * n * Math.sin(lat0)) / n;
+      return galbers;
+    }
+
+    return galbers.scale(lower48.scale());
+  };
+
+
+////////////////////////////////////////////////////////////////////////
+
+	var w = 950,
+		h = 435;
+
+	var useGreatCircles = false;
+
+    d3.loadData = function() {
+        var loadedCallback = null;
+        var toload = {};
+        var data = {};
+        var loaded = function(name, d) {
+          delete toload[name];
+          data[name] = d;
+          return notifyIfAll();
+        };
+        var notifyIfAll = function() {
+          if ((loadedCallback != null) && d3.keys(toload).length === 0) {
+            loadedCallback(data);
+          }
+        };
+        var loader = {
+          json: function(name, url) {
+            toload[name] = url;
+            d3.json(url, function(d) {
+              return loaded(name, d);
+            });
+            return loader;
+          },
+          csv: function(name, url) {
+            toload[name] = url;
+            d3.csv(url, function(d) {
+              return loaded(name, d);
+            });
+            return loader;
+          },
+          onload: function(callback) {
+            loadedCallback = callback;
+            notifyIfAll();
+          }
+        };
+        return loader;
+      };
+
+var projection = d3.geo.galbers()
+	.scale(800)
+	;
+
+	var tip = d3.tip()
+		  .attr('class', 'd3-tip')
+		  .text(function(d) { return d.name; })
+		  .direction('w')
+		  .offset([-9, -3])
+	;
+
+	var path = d3.geo.path()
+		.projection(projection);
+
+    var arc = d3.geo.greatArc().precision(3) //3);
+
+    var svg = d3.select("body").append("svg")
+        .attr("width", w)
+        .attr("height", h)
+        .call(tip)
+    ;
+
+    var countries = svg.append("g").attr("id", "countries");
+    var lakes = svg.append("g").attr("id", "lakes");
+    var words = svg.append("g").attr("id", "words");
+    var arcs = svg.append("g").attr("id", "arcs");
+    var centroids = svg.append("g").attr("id", "centroids");
+	var labels = svg.append("g").attr("id","labels");
+
+    svg.append("text")
+      .attr("id", "loading")
+      .attr("x", 5)
+      .attr("y", 17)
+      .attr("font-size", "9pt")
+      .attr("font-family", "arial")
+      .text("Loading...");
+
+    d3.loadData()
+      .json('countries', 'world-countries.json')
+      .json('lakes', 'lakes.json')
+      .csv('nodes', '../nodes.csv')
+      .csv('flows', '../links.csv')
+      .onload(function(data) {
+
+        d3.select("#loading").attr("visibility", "hidden");
+
+        var nodeDataByCode = {}, links = [];
+
+        countries.selectAll("path")
+          .data(data.countries.features)
+        .enter().append("path")
+          .attr("d", path);
+
+        lakes.selectAll("path")
+          .data(data.lakes.features)
+        .enter().append("path")
+          .attr("d", path)
+          .style("fill","white")
+          ;
+
+
+/*******************************************/
+
+		//Europe mask
+		countries.append("rect")
+			.style("stroke","white").style("fill","white").style("fill-opacity",1)
+			.attr("x",800).attr("y",100).attr("width",w-800).attr("height",115)
+			;
+		countries.append("rect")
+			.style("stroke","white").style("fill","white").style("fill-opacity",1)
+			.attr("x",740).attr("y",360).attr("width",w-360).attr("height",40)
+			;
+
+		var countryboxes = [ 
+			[ //NZ
+				[1,projection([179.9,-32])[1]], // top left
+				[1,h-1], // bottom left
+				[projection([179.9,-32])[0]+50, h-1], // bottom right
+				[projection([179.9,-32])[0]+50,projection([179.9,-32])[1]], //top right
+				[1,projection([179.9,-32])[1]] // top left
+			],
+			[ //Asia
+				[1, 0],
+				[1,projection([130,17])[1]],
+				[projection([144,13])[0], projection([130,17])[1]],
+				[projection([144,13])[0],0],
+				[1, 0]
+			],
+			[ //Europe
+				projection([-14,61]), // top left
+				[ projection([-14,61])[0], projection([-14,46.1])[1]], // bottom left
+				[w-1, projection([-14,46.1])[1]], //bottom right 
+				[w-1, projection([-14,61])[1]], // top right
+				projection([-14,61]) // top left
+			]
+		];
+
+		for (var i = 0; i < countryboxes.length; i++) {
+			countries.append("polygon")
+				.attr("points",countryboxes[i].join(","))
+				.style("stroke","black").style("stroke-width",0.5)
+				.style("fill","white").style("fill-opacity",0)
+			;
+		}
+
+		//inset map labels
+		countries.append("text")
+		 .attr("x",87).attr("y",428)
+		 .text("New Zealand")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px")
+		 .style("fill","white").style("text-anchor","middle")
+		 .style("stroke","white").style("stroke-width","4px").style("stroke-opacity","0.8")
+		;
+		countries.append("text")
+		 .attr("x",87).attr("y",428)
+		 .text("New Zealand")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px")
+		 .style("fill","ddd").style("text-anchor","middle")
+		;		
+		countries.append("text")
+		 .attr("x",67).attr("y",152)
+		 .text("Asia")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px")
+		 .style("fill","white").style("text-anchor","middle")
+		 .style("stroke","white").style("stroke-width","4px").style("stroke-opacity","0.8")
+		;
+		countries.append("text")
+		 .attr("x",67).attr("y",152)
+		 .text("Asia")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px")
+		 .style("fill","ddd").style("text-anchor","middle")
+		;		
+		countries.append("text")
+		 .attr("x",800).attr("y",230)
+		 .text("Europe")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px")
+		 .style("fill","white").style("text-anchor","middle")
+		 .style("stroke","white").style("stroke-width","4px").style("stroke-opacity","0.8")
+		;
+		countries.append("text")
+		 .attr("x",800).attr("y",230)
+		 .text("Europe")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px")
+		 .style("fill","ddd").style("text-anchor","middle")
+		;		
+
+		//Vancouver
+		countries.append("circle")
+			.style("stroke","black").style("fill","grey").style("fill-opacity",0.4).attr("r",16)
+			.attr("cx",function(d) { return projection([-122.8619,49.1505])[0]; })
+			.attr("cy",function(d) { return projection([-122.8619,49.1505])[1]; })
+			;
+		countries.append("circle")
+			.style("stroke","black").style("fill","white").style("fill-opacity",0.4).attr("r",14)
+			.attr("cx",function(d) { return projection([-122.8619,49.1505])[0]; })
+			.attr("cy",function(d) { return projection([-122.8619,49.1505])[1]; })
+			;
+
+		//Toronto
+		countries.append("circle")
+			.style("stroke","black").style("fill","grey").style("fill-opacity",0.4).attr("r",17)
+			.attr("cx",function(d) { return projection([-79.1042,43.7481])[0]; })
+			.attr("cy",function(d) { return projection([-79.1042,43.7481])[1]; })
+			;
+		countries.append("circle")
+			.style("stroke","black").style("fill","white").style("fill-opacity",0.4).attr("r",15)
+			.attr("cx",function(d) { return projection([-79.1042,43.7481])[0]; })
+			.attr("cy",function(d) { return projection([-79.1042,43.7481])[1]; })
+			;
+
+		//Montreal
+		countries.append("circle")
+			.style("stroke","black").style("fill","grey").style("fill-opacity",0.4).attr("r",12)
+			.attr("cx",function(d) { return projection([-73.555,45.5081])[0]; })
+			.attr("cy",function(d) { return projection([-73.555,45.5081])[1]; })
+			;
+		countries.append("circle")
+			.style("stroke","black").style("fill","white").style("fill-opacity",0.4).attr("r",10)
+			.attr("cx",function(d) { return projection([-73.555,45.5081])[0]; })
+			.attr("cy",function(d) { return projection([-73.555,45.5081])[1]; })
+			;
+
+		//title
+		words.append("text")
+		 .attr("x",w/2).attr("y",20)
+		 .text("Canadian VC-funded high-tech companies acquired in 2012")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "19px")
+		 .style("fill","white").style("text-anchor","middle")
+		 .style("stroke","white").style("stroke-width","5px").style("stroke-opacity","0.8")
+		;
+		words.append("text")
+		 .attr("x",w/2).attr("y",20)
+		 .text("Canadian VC-funded high-tech companies acquired in 2012")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "19px")
+		 .style("fill","black").style("text-anchor","middle")
+		;
+
+		//fine print
+		words.append("text")
+		 .attr("x",w-160).attr("y",h-10)
+		 .text("*Based only on reported data, from both public and private sources")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "10px")
+		 .style("fill","white").style("text-anchor","middle")
+		 .style("stroke","white").style("stroke-width","3px").style("stroke-opacity","0.8")
+		;
+		words.append("text")
+		 .attr("x",w-160).attr("y",h-10)
+		 .text("*Based only on reported data, from both public and private sources")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "10px")
+		 .style("fill","black").style("text-anchor","middle")
+		;
+
+		//Legend
+		var legend = words.append("g").attr("transform","translate(500,270)");
+		legend.append("rect")
+ 		 .attr("width",160).attr("height",100)
+		 .style("fill","white").style("fill-opacity",0.5).style("stroke","black").style("stroke-width","2px");
+		legend.append("text")
+		 .attr("x",80).attr("y",22).style("font-weight", "bold")
+		 .attr("font-family", "Arial, sans-serif").attr("font-size", "12px").style("text-anchor","middle")
+		 .text("LEGEND");
+		legend.append("circle").attr("cx", 20).attr("cy", 40).attr("r", 4).style("fill", "blue");
+		legend.append("circle").attr("cx", 20).attr("cy", 60).attr("r", 4).style("fill", "red");
+		legend.append("circle").attr("cx", 20).attr("cy", 80).attr("r", 4).style("fill", "green");
+		legend.append("text").attr("x",30).attr("y",44).text("VC-funded company")
+			.attr("font-family", "Arial, sans-serif").attr("font-size", "12px");
+		legend.append("text").attr("x",30).attr("y",64).text("Acquirer")
+			.attr("font-family", "Arial, sans-serif").attr("font-size", "12px");
+		legend.append("text").attr("x",30).attr("y",84).text("Investor")
+			.attr("font-family", "Arial, sans-serif").attr("font-size", "12px");
+			
+		data.nodes.forEach(function(node) {
+			var lon = parseFloat(node.fakelon), lat = parseFloat(node.fakelat);			
+			var reallon = parseFloat(node.lon), reallat = parseFloat(node.lat);
+
+			if (isNaN(lon) || isNaN(lat)) {
+				lon = parseFloat(node.lon);
+				lat = parseFloat(node.lat);
+			};
+			node.coords = [lon, lat];
+			node.realcoords = [reallon, reallat];
+			node.projection = node.coords ? projection(node.coords) : undefined;
+			node.realprojection = node.realcoords ? projection(node.realcoords) : undefined;
+			nodeDataByCode[node.id] = node;
+        });
+
+		function neighboring(a, b) {
+		  return connected[a.id + "," + b.id];
+		}
+
+		var connected = {};
+        data.flows.forEach(function(flow) {
+			if (flow.type == "a" || flow.type == "i" ) {
+				connected[flow.companyid + "," + flow.otherid] = 1;
+				var o = nodeDataByCode[flow.otherid], co = o.coords, po = o.projection;
+				var d = nodeDataByCode[flow.companyid], cd = d.coords, pd = d.projection;
+				if (co  &&  cd) {
+					links.push({
+					  source: co, target: cd,
+					  origin:o, dest:d,
+					  originp: po, destp:pd 
+					});
+				}
+			}
+        });
+
+        var node = centroids.selectAll(".node")
+			.data(data.nodes)
+			.enter().append("g")
+			.attr("class","node")
+			;
+
+		var label = labels
+		  .selectAll("text")
+			.data(data.nodes)
+		  .enter().append("g")
+			.attr("transform",function(d) {
+				return "translate(" + d.projection[0] + "," + d.projection[1] + ")";
+			})
+			.attr("class", "labels");
+
+		label.append("text")
+			.attr("dx", 6)
+			.attr("dy", function(d) {
+				if (d.type != "c") {
+					switch (d.transformation.charAt(0)) {
+						case "A": return "-.25em"; break;
+						case "3": return ".65em"; break;
+						case "4": return "0em"; break;
+						case "9": return ".95em"; break;
+						default: return ".35em"; break;
+					}
+				}
+		   })
+			.style("stroke",function(d) {
+				switch (d.type) {
+					case "c": return "white"; break;
+					case "a": return "white"; break;
+					case "i": return "white"; break;
+				}
+		   })
+			.style("stroke-width","3px")
+			.style("stroke-opacity","0.8")
+			.text(function(d) { return d.name; });
+
+		label.append("text")
+			.attr("dx", 6)
+			.attr("dy", function(d) {
+				if (d.type != "c") {
+					switch (d.transformation.charAt(0)) {
+						case "A": return "-.25em"; break;
+						case "3": return ".65em"; break;
+						case "4": return "0em"; break;
+						case "9": return ".95em"; break;
+						default: return ".35em"; break;
+					}
+				}
+		   })
+			.style("fill",function(d) {
+				switch (d.type) {
+					case "c": return "blue"; break;
+					case "a": return "red"; break;
+					case "i": return "green"; break;
+				}
+		   })
+			.text(function(d) { return d.name });
+
+		node.append("circle")
+			.attr("cx", function(d) { return d.projection[0] } )
+			.attr("cy", function(d) { return d.projection[1] } )
+			.attr("r", 4)
+			.attr("class", "dot")
+		   .style("fill", function(d) {
+				switch (d.type) {
+					case "c": return "blue"; break;
+					case "a": return "red"; break;
+					case "i": return "green"; break;
+				}
+		   })
+			.attr("class", function(d) { 
+				if (d.type == "c") {
+				} else {
+					return "dot";
+				}
+			})
+			.on("mouseover", function(d) {  
+				tip.show(d);
+				if (d.type == "c") {
+					d3.select(this).transition()
+						.duration(500)
+						.attr("r", 5);
+					d3.select(this).select("text.label")
+						.attr("class", "labelselected");
+					d3.select(this).classed("active", true);
+					svg.selectAll(".link")
+						.classed("active", function(p) { 
+							return p.dest.id === d.id; 
+						})
+						.style("stroke",function(p) {
+							if (p.dest.id == d.id) {
+								switch (p.origin.type) {
+									case "c": return "blue"; break;
+									case "a": return "red"; break;
+									case "i": return "green"; break;
+									case "default": return "black"; break;
+								}
+							} else {
+								return "#ddd";
+							}
+						})
+					;
+
+					svg.selectAll(".labels").classed("active", function(k) { 
+						return neighboring(d,k);
+					});
+
+					centroids.selectAll(".dot").classed("active", function(p) {
+						return neighboring(d,p);
+					})
+				}
+			})
+			.on("mouseout", function(d) {  
+				tip.hide();
+				d3.select(this).transition()
+					.duration(500)
+					.attr("r", 4);
+				svg.selectAll("text.active").style("stroke", "#f2f2f2");
+				svg.selectAll("path.active").style("stroke", "#f2f2f2");
+				svg.selectAll(".active").classed("active", false);
+				})
+			;
+
+
+        function splitPath(path) {
+          var avgd = 0, i, d;
+          var c, pc, dx, dy;
+          var points = path.split("L");
+          if (points.length < 2) return path;
+          var newpath = [ points[0] ];
+          var coords = points.map(function(d, i) {
+            return d.substr(i > 0 ? 0 : 1).split(","); // remove M and split
+          });
+
+          // calc avg dist between points
+          for (i = 1; i < coords.length; i++) {
+            pc = coords[i-1]; c = coords[i];
+            dx = c[0] - pc[0]; dy = c[1] - pc[1];
+            d = Math.sqrt(dx*dx + dy*dy);
+            c.push(d);  // push dist as last elem of c
+            avgd += d;
+          }
+          avgd /= coords.length - 1;
+
+          // for points with long dist from prev use M instead of L
+          for (i = 1; i < coords.length; i++) {
+            c = coords[i];
+            newpath.push((c[2] > 5 * avgd ? "M" : "L") + points[i]);
+          }
+          return newpath.join("");
+        }
+
+        var arcNodes = arcs.selectAll("path")
+          .data(links)
+        .enter().append("path")
+			.attr("class", "link")
+          .attr("stroke-linecap", "round")
+          .attr("d", function(d) { 
+            if (useGreatCircles)
+              return splitPath(path(arc(d)));
+            else 
+              return path({
+                type: "LineString",
+                coordinates: [d.source, d.target]
+              });
+          })
+			;
+        ;
+});
+
+</script>
+</body>
+</html>
